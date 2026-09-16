@@ -1,4 +1,4 @@
-COLMAP_results/
+colmap_results/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
