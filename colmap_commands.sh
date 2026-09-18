@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail  # Exit script if command fails.
 
-IMAGES="/home/boldi/code/MA/data/tomatoes/images"
+IMAGES="/home/boldi/code/MA/gs-intro/tomatoes/images"
 WORK="$(dirname "$(realpath "$0")")"  # Directory the script is in.
 RESULTS="colmap_results"
 DB="$RESULTS/database.db"
@@ -38,12 +38,29 @@ colmap mapper \
     --output_path "$RESULTS"
 
 
-# Convert .bin to .txt.
-for d in "$RESULTS"/*/; do
+# Undistort every sparse model (0, 1, ...) for 3DGS.
+for d in "$RESULTS"/[0-9]*/; do
     n=$(basename "$d")
-    mkdir -p "$RESULTS/${n}_txt"
-    colmap model_converter --input_path "$d" --output_path "$RESULTS/${n}_txt" --output_type TXT
+
+    # Undistort images and write a pinhole model for 3DGS.
+    colmap image_undistorter \
+        --image_path "$IMAGES" \
+        --input_path "$d" \
+        --output_path "$RESULTS/${n}_undistorted" \
+        --output_type COLMAP
+
+    # Keep only images/ and sparse/; the rest is for dense reconstruction.
+    rm -rf "$RESULTS/${n}_undistorted/stereo" "$RESULTS/${n}_undistorted/"run-colmap-*.sh
+
+    # Convert .bin to .txt.
+    mkdir -p "$RESULTS/${n}_undistorted/sparse_txt"
+    colmap model_converter \
+        --input_path "$RESULTS/${n}_undistorted/sparse" \
+        --output_path "$RESULTS/${n}_undistorted/sparse_txt" \
+        --output_type TXT
+
 done
 
 # Print analysis.
+printf "\nRunning COLMAP model analyzer:\n\n"
 colmap model_analyzer --path "$RESULTS/0"

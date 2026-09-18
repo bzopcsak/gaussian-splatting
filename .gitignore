@@ -1,4 +1,10 @@
+# Local and generated data.
+tomatoes/
 colmap_results/
+gsplat_results/
+
+# vscode.
+.vscode/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
