@@ -1,18 +1,14 @@
-# gaussian-splatting
-Gaussian Splatting Experiment
+# Gaussian Splatting
+Gaussian Splatting using COLMAP and the Bowl of Tomatoes dataset.
 
 
 # Dataset
-<details>
-    <summary>Link to download</summary>
-
 Download [Bowl of Tomatoes
 dataset](https://www.kaggle.com/datasets/simonbethke/bowl-of-tomatoes?select=00000.jpg)
 from Kaggle.
-</details>
 
 
-# Running
+# COLMAP
 <details>
     <summary>1. COLMAP</summary>
 
@@ -97,10 +93,15 @@ X_cam = R · X_world + t
 
 **Line 2** lists this image's keypoints as triples `X Y POINT3D_ID`.
 
-- `(X, Y)` is the keypoint's pixel position. The center of the top-left pixel is `(0.5, 0.5)`.
-- `POINT3D_ID` is the 3D point this keypoint is an observation of. A 3D point is triangulated from matching keypoints in several images, and each of those keypoints stores the point's ID. Keypoints that are not an observation of any 3D point have `-1`.
+- `(X, Y)` is the keypoint's pixel position. The center of the top-left pixel is
+  `(0.5, 0.5)`.
+- `POINT3D_ID` is the 3D point this keypoint is an observation of. A 3D point is
+  triangulated from matching keypoints in several images, and each of those
+  keypoints stores the point's ID. Keypoints that are not an observation of any
+  3D point have `-1`.
 
-A keypoint's position in this list, starting at 0, is its `POINT2D_IDX`. `points3D.txt` uses it to refer back to the keypoint.
+A keypoint's position in this list, starting at 0, is its `POINT2D_IDX`.
+`points3D.txt` uses it to refer back to the keypoint.
 
 ## 3. `points3D.txt`: Sparse point cloud
 
@@ -146,7 +147,8 @@ translation and scale).
 
 ## What 3D Gaussian Splatting uses
 
-- `cameras.txt` + `images.txt`: intrinsics and poses for rendering each training view.
+- `cameras.txt` + `images.txt`: intrinsics and poses for rendering each training
+  view.
 - `points3D`: `XYZ` and `RGB` to initialize one Gaussian per point.
 
 The original 3DGS loader only accepts `PINHOLE` and `SIMPLE_PINHOLE`. With a

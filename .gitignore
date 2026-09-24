@@ -1,7 +1,7 @@
 # Local and generated data.
 tomatoes/
-colmap_results/
-gsplat_results/
+colmap_results*/
+gsplat_results*/
 
 # vscode.
 .vscode/
