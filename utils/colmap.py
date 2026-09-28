@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import numpy as np
 
 
-# --- Geometry ---------------------------------------------------------------
+# --- Geometry -----------------------------------------------------------------
 def _normalize(v, name):
     """Return v as a float array with unit length. Raise on zero length."""
     v = np.asarray(v, dtype=float)
@@ -24,7 +24,7 @@ def qvec_to_rotmat(qvec):
     ])
 
 
-# --- images.txt -------------------------------------------------------------
+# --- images.txt ---------------------------------------------------------------
 @dataclass
 class Image:
     """One registered image.
@@ -37,7 +37,7 @@ class Image:
     """
     id: int
     qvec: np.ndarray         # (4,) w, x, y, z
-    tvec: np.ndarray         # (3,)
+    tvec: np.ndarray         # (3,) x, y, z, world origin in camera coordinates
     camera_id: int
     name: str
     xys: np.ndarray          # (N, 2) keypoint pixel coordinates
@@ -77,7 +77,7 @@ def read_images_txt(path):
     return images
 
 
-# --- points3D.txt -----------------------------------------------------------
+# --- points3D.txt -------------------------------------------------------------
 @dataclass
 class Points3D:
     """All triangulated COLMAP points.
