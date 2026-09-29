@@ -19,6 +19,4 @@ The goal of 3D Gaussian Splatting is to represent a scene so it can be rendered 
 
 Real-time rendering of the Gaussian Splatting reconstruction from different viewpoints.
 
-<div align="center">
-  <video src="images/result.mp4" controls width="800"></video>
-</div>
+![Rendering from different viewpoints](images/result.gif)
