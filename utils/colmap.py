@@ -1,27 +1,47 @@
 """Readers for COLMAP sparse models in text format (sparse_txt/)."""
+import os
 from dataclasses import dataclass
 
 import numpy as np
 
-
-# --- Geometry -----------------------------------------------------------------
-def _normalize(v, name):
-    """Return v as a float array with unit length. Raise on zero length."""
-    v = np.asarray(v, dtype=float)
-    norm = np.linalg.norm(v)
-    if norm == 0:
-        raise ValueError(f"{name} has zero length and cannot be normalized")
-    return v / norm
+from .geometry import qvec_to_rotmat
 
 
-def qvec_to_rotmat(qvec):
-    """Quaternion (w, x, y, z) -> 3x3 rotation matrix. Normalizes first."""
-    w, x, y, z = _normalize(qvec, "qvec")
-    return np.array([
-        [1 - 2*y*y - 2*z*z, 2*x*y - 2*w*z,     2*x*z + 2*w*y],
-        [2*x*y + 2*w*z,     1 - 2*x*x - 2*z*z, 2*y*z - 2*w*x],
-        [2*x*z - 2*w*y,     2*y*z + 2*w*x,     1 - 2*x*x - 2*y*y],
-    ])
+# --- cameras.txt --------------------------------------------------------------
+@dataclass
+class Camera:
+    """One camera.
+
+    File format, one camera per line:
+        CAMERA_ID, MODEL, WIDTH, HEIGHT, PARAMS[]
+
+    For the PINHOLE model, PARAMS[] = fx, fy, cx, cy.
+    """
+    id: int
+    model: str
+    width: int
+    height: int
+    params: np.ndarray
+
+    @property
+    def K(self):
+        """3x3 intrinsics matrix. Only valid for the PINHOLE model."""
+        assert self.model == "PINHOLE", f"K is only defined for PINHOLE, got {self.model}"
+        fx, fy, cx, cy = self.params
+        return np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]])
+
+
+def read_cameras_txt(path):
+    """Return {camera_id: Camera}."""
+    cameras = {}
+    with open(path) as f:
+        for line in f:
+            if line.startswith("#") or not line.strip():
+                continue
+            e = line.split()
+            cam = Camera(int(e[0]), e[1], int(e[2]), int(e[3]), np.array(e[4:], dtype=float))
+            cameras[cam.id] = cam
+    return cameras
 
 
 # --- images.txt ---------------------------------------------------------------
@@ -51,6 +71,14 @@ class Image:
     def center(self):
         """Camera center in world coordinates: C = -R^T t."""
         return -self.R.T @ self.tvec
+    
+    @property
+    def world_to_cam(self):
+        """4x4 world-to-camera matrix."""
+        M = np.eye(4)
+        M[:3, :3] = self.R
+        M[:3, 3] = self.tvec
+        return M
 
 
 def read_images_txt(path):
