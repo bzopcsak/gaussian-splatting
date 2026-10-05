@@ -72,7 +72,7 @@ def build_dataset(image_paths, intrinsics, poses):
         poses: {image_id: Image}, from read_images_txt.
 
     Returns:
-        List of View, one per pose, in the order of poses.
+        List of View, one per pose, sorted by image file name (like gsplat, so the train/val split matches).
     """
     return [
         View(
@@ -80,7 +80,7 @@ def build_dataset(image_paths, intrinsics, poses):
             K=intrinsics_to_K(intrinsics[pose.camera_id]),
             viewmat=pose_to_viewmat(pose),
         )
-        for pose in poses.values()
+        for pose in sorted(poses.values(), key=lambda pose: pose.name)
     ]
     
 
@@ -174,3 +174,9 @@ def eval_psnr(splats: Splats, views, device="cuda"):
         mse = ((pred - gt) ** 2).mean()
         psnrs.append(-10 * torch.log10(mse))  # = 10 log10(1 / MSE), since the pixel range is 1
     return torch.stack(psnrs).mean().item()
+
+
+def log_metrics(msg, results_dir, filename="metrics.log"):
+    print(msg)
+    with open(os.path.join(results_dir, filename), "a") as f:
+        f.write(msg + "\n")
