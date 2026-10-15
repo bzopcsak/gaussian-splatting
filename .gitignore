@@ -2,7 +2,8 @@
 tomatoes*/
 colmap_results*/
 gsplat_results*/
-gs_from_scratch_results*/
+gs_from_scratch*/
+00_Archive/
 
 # vscode.
 .vscode/

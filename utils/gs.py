@@ -87,7 +87,7 @@ def build_dataset(image_paths, intrinsics, poses):
 def downscale_dataset(dataset, out_folder, factor, force=False):
     """Return a dataset with scaled intrinsics and optionally downscaled PNGs.
 
-    Existing downscaled pngs are reused unless ``force=True``.
+    Existing downscaled pngs are reused unless ``force=True``. Views without a png in the folder are skipped.
     """
     write_images = force or not os.path.isdir(out_folder)
     if write_images:
@@ -96,19 +96,20 @@ def downscale_dataset(dataset, out_folder, factor, force=False):
 
     dataset_downscaled = []
     for view in tqdm(dataset, desc="Downscaling dataset"):
+        out_path = f"{out_folder}/{os.path.splitext(os.path.basename(view.image_path))[0]}.png"
+        if not write_images and not os.path.isfile(out_path):
+            continue  # only use the pngs that are there
+
         src = Image.open(view.image_path)  # reads only the header until the pixels are needed
         W, H = round(src.width / factor), round(src.height / factor)
-
-        out_path = f"{out_folder}/{os.path.splitext(os.path.basename(view.image_path))[0]}.png"
         if write_images:
-            src.convert("RGB").resize((W, H), Image.LANCZOS).save(out_path)
+            src.convert("RGB").resize((W, H), Image.BICUBIC).save(out_path)
 
         # W, H were rounded to whole pixels, so the true shrink factor is slightly off 1/factor.
         # Row 0 (fx, cx) scales with the width, row 1 (fy, cy) with the height; viewmat is resolution-independent.
         K_scaled = view.K.clone()
         K_scaled[0] *= W / src.width
         K_scaled[1] *= H / src.height
-        
         dataset_downscaled.append(replace(view, image_path=out_path, K=K_scaled))
     return dataset_downscaled
 
@@ -119,9 +120,8 @@ def load_image(view, device="cuda"):
     return img.to(device).float() / 255  # move as uint8 (4x less data), convert on the GPU
 
 
-def render(s: Splats, K, viewmat, W, H):
-    """Render splats from one camera. Returns (H, W, 3) on the GPU, with gradients."""
-    img, _, _ = rasterization(
+def render(s: Splats, K, viewmat, W, H, background=None, return_info=False):
+    img, _, info = rasterization(
         means=s.means,
         quats=s.quats,
         scales=s.log_scales.exp(),
@@ -131,8 +131,10 @@ def render(s: Splats, K, viewmat, W, H):
         Ks=K[None],
         width=W,
         height=H,
+        backgrounds=None if background is None else torch.tensor([background], device=s.means.device),  # None = black. Tensor only built if background is passed.
+        packed=False,
     )
-    return img[0]
+    return (img[0], info) if return_info else img[0]
 
 
 def save_splats(splats: Splats, folder, filename="splats.pt"):
@@ -161,6 +163,28 @@ def save_splats(splats: Splats, folder, filename="splats.pt"):
             path,
         )
     return path
+
+
+def load_splats(path, device="cpu"):
+    """Load splats from a gsplat simple_viewer.py-style checkpoint.
+
+    Converts SH degree-0 coefficients back to RGB colors.
+    Ignores higher SH bands and returns a Splats object on ``device``.
+    """
+    SH_C0 = 0.28209479177387814
+
+    ckpt = torch.load(path, map_location=device)
+    data = ckpt["splats"]
+
+    colors = data["sh0"][:, 0, :] * SH_C0 + 0.5
+
+    return Splats(
+        means=data["means"].to(device),
+        quats=data["quats"].to(device),
+        log_scales=data["scales"].to(device),
+        logit_opacities=data["opacities"].to(device),
+        colors=colors.to(device),
+    )
 
 
 @torch.no_grad()
