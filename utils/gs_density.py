@@ -1,8 +1,8 @@
+from dataclasses import fields
+
 import torch
 import torch.nn.functional as F
-from dataclasses import fields
 from gsplat.utils import normalized_quat_to_rotmat
-
 
 # Adaptive density control (paper Sec. 5.2) with gsplat's DefaultStrategy defaults.
 RESET_EVERY = 3000    # reset opacities every 3k steps
@@ -34,8 +34,8 @@ def grow(splats, optimizer, grad2d_mean, scene_scale):
 
     # Clone (under-reconstruction): append an exact copy.
     replace_rows(splats, optimizer, slice(None), {f.name: getattr(splats, f.name)[is_clone] for f in fields(splats)})
-    is_split = torch.cat([is_split, is_clone.new_zeros(int(is_clone.sum()))])  # clones (appended) are not split
-
+    is_split = torch.cat([is_split, is_clone.new_zeros(int(is_clone.sum()))])  # Extend the mask to the appended clones with False (zero): they are not split.
+    
     # Split (over-reconstruction): replace by 2 splats sampled from the original Gaussian, scales / 1.6.
     s, R = splats.log_scales[is_split].exp(), normalized_quat_to_rotmat(F.normalize(splats.quats[is_split], dim=-1))
     offsets = torch.einsum("nij,nj,bnj->bni", R, s, torch.randn(2, len(s), 3, device=s.device))  # R S z ~ N(0, Σ), (2, n, 3)
@@ -49,8 +49,8 @@ def grow(splats, optimizer, grad2d_mean, scene_scale):
 @torch.no_grad()
 def prune(splats, optimizer, step, scene_scale):
     is_prune = splats.logit_opacities.sigmoid() < PRUNE_OPA
-    if step > RESET_EVERY:
-        is_prune |= splats.log_scales.exp().max(-1).values > PRUNE_SCALE3D * scene_scale
+    if step > RESET_EVERY:  # Give big initial splats time to be split before pruning them by size.
+        is_prune |=  splats.log_scales.exp().max(-1).values > PRUNE_SCALE3D * scene_scale
     replace_rows(splats, optimizer, ~is_prune, {f.name: getattr(splats, f.name)[:0] for f in fields(splats)})
     return is_prune.sum().item()
 
