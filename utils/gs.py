@@ -10,6 +10,8 @@ from tqdm.auto import tqdm
 
 from .geometry import intrinsics_to_K, pose_to_viewmat
 
+SH_C0 = 0.28209479177387814  # SH degree-0 basis constant: rgb = SH_C0 * sh0 + 0.5
+
 
 @dataclass
 class Splats:
@@ -22,14 +24,28 @@ class Splats:
     
     def to(self, device):
         """Return a copy with every field on device."""
-        return Splats(**{f.name: getattr(self, f.name).to(device) for f in fields(self)})
-    
+        return type(self)(**{f.name: getattr(self, f.name).to(device) for f in fields(self)})
+
     def requires_grad_(self):
         """Make every field a trainable leaf tensor, in place. Returns self for chaining."""
         # Leaf: created directly, not computed from other tensors; only leaves get .grad for the optimizer.
         for f in fields(self):
             getattr(self, f.name).requires_grad_()
         return self
+
+
+@dataclass
+class SHSplats(Splats):
+    """Splats with view-dependent color. `colors` stays the base RGB (SH band 0), shN adds the higher bands."""
+    shN: torch.Tensor  # (N, K - 1, 3) SH coefficients of bands 1..degree, K = (degree + 1)^2
+
+    @property
+    def sh_degree(self):
+        return round((self.shN.shape[1] + 1) ** 0.5) - 1
+
+    def sh(self):
+        """All SH coefficients (N, K, 3) in gsplat's convention."""
+        return torch.cat([((self.colors - 0.5) / SH_C0)[:, None], self.shN], dim=1)
 
 
 @dataclass
@@ -120,13 +136,18 @@ def load_image(view, device="cuda"):
     return img.to(device).float() / 255  # move as uint8 (4x less data), convert on the GPU
 
 
-def render(s: Splats, K, viewmat, W, H, background=None, return_info=False):
+def render(s: Splats, K, viewmat, W, H, background=None, return_info=False, sh_degree=None):
+    """sh_degree only applies to SHSplats: use bands 0..sh_degree (None = all)."""
+    colors = s.colors
+    if isinstance(s, SHSplats):
+        colors, sh_degree = s.sh(), s.sh_degree if sh_degree is None else sh_degree
     img, _, info = rasterization(
         means=s.means,
         quats=s.quats,
         scales=s.log_scales.exp(),
         opacities=s.logit_opacities.sigmoid(),
-        colors=s.colors,
+        colors=colors,
+        sh_degree=sh_degree,
         viewmats=viewmat[None],
         Ks=K[None],
         width=W,
@@ -140,11 +161,9 @@ def render(s: Splats, K, viewmat, W, H, background=None, return_info=False):
 def save_splats(splats: Splats, folder, filename="splats.pt"):
     """Save splats in the checkpoint format of gsplat's examples/simple_viewer.py.
 
-    gsplat stores log scales and logit opacities; colors become SH degree 0.
+    gsplat stores log scales and logit opacities; colors become SH degree 0, shN the higher bands (if any).
     Creates folder if needed and returns the full path of the saved file.
     """
-    SH_C0 = 0.28209479177387814  # SH degree-0 basis constant: rgb = SH_C0 * sh0 + 0.5
-
     os.makedirs(folder, exist_ok=True)
     path = os.path.join(folder, filename)
 
@@ -157,7 +176,7 @@ def save_splats(splats: Splats, folder, filename="splats.pt"):
                     "scales": splats.log_scales.cpu(),
                     "opacities": splats.logit_opacities.cpu(),
                     "sh0": ((splats.colors.cpu() - 0.5) / SH_C0)[:, None, :],  # (N, 1, 3)
-                    "shN": torch.zeros(len(splats.means), 0, 3),  # no higher bands -> degree 0
+                    "shN": splats.shN.cpu() if isinstance(splats, SHSplats) else torch.zeros(len(splats.means), 0, 3),
                 }
             },
             path,
@@ -169,22 +188,23 @@ def load_splats(path, device="cpu"):
     """Load splats from a gsplat simple_viewer.py-style checkpoint.
 
     Converts SH degree-0 coefficients back to RGB colors.
-    Ignores higher SH bands and returns a Splats object on ``device``.
+    Returns SHSplats if the file has higher SH bands, else Splats, on ``device``.
     """
-    SH_C0 = 0.28209479177387814
-
     ckpt = torch.load(path, map_location=device)
     data = ckpt["splats"]
 
     colors = data["sh0"][:, 0, :] * SH_C0 + 0.5
 
-    return Splats(
+    splats = Splats(
         means=data["means"].to(device),
         quats=data["quats"].to(device),
         log_scales=data["scales"].to(device),
         logit_opacities=data["opacities"].to(device),
         colors=colors.to(device),
     )
+    if data["shN"].shape[1] > 0:
+        splats = SHSplats(**vars(splats), shN=data["shN"].to(device))
+    return splats
 
 
 @torch.no_grad()
