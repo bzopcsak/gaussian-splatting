@@ -1,5 +1,4 @@
 """Readers for COLMAP sparse models in text format (sparse_txt/)."""
-import os
 from dataclasses import dataclass
 
 import numpy as np
